@@ -1,12 +1,21 @@
 # DGX Starter Pack
 
-Project workspace for a DGX Spark starter pack, including a future experimental
-DGX Spark + RTX 5090 workflow for running a larger model across two machines.
+Dedicated workspace for a DGX Spark setup and an RTX 5090 host running Ubuntu,
+including a future experimental workflow for running a larger model across the
+two machines.
 
 ## Status
 
 Initial repository scaffold only. No hardware setup, model serving, distributed
 inference, Kubernetes deployment, or benchmarks have been implemented or tested.
+
+## Machine workspaces
+
+- [DGX Spark setup](dgx-spark/README.md) — setup checklist and machine-specific configuration.
+- [RTX 5090 on Ubuntu](rtx-5090-ubuntu/README.md) — Ubuntu setup checklist and machine-specific configuration.
+
+Each workspace has its own `config/` folder. Configuration is currently a
+planning scaffold, not an installation script or a working model-serving stack.
 
 ## Planned work
 
@@ -18,5 +27,3 @@ inference, Kubernetes deployment, or benchmarks have been implemented or tested.
 
 Model weights, private datasets, credentials, and local experiment output do not
 belong in Git. Add example configuration with placeholders, not real secrets.
-
-The OneWorld GTA mod release is a separate project and is not included here.
