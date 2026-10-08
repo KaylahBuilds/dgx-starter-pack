@@ -1,0 +1,35 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+.secrets/
+*.key
+*.pem
+
+# Model weights, datasets, and experiment output
+models/
+checkpoints/
+data/
+results/
+logs/
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.zip
+
+# Local environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+node_modules/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
