@@ -1,0 +1,6 @@
+apiVersion: v2
+name: dgx-spark-platform
+description: Admin-owned, staged Argo CD app-of-apps for a single DGX Spark lab
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,29 @@
+# Non-HA, private lab UI. Access via loopback port-forward; no ingress/LB.
+dex: {enabled: false}
+notifications: {enabled: false}
+applicationSet: {enabled: false}
+redis-ha: {enabled: false}
+server:
+  replicas: 1
+  service: {type: ClusterIP}
+  ingress: {enabled: false}
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+repoServer:
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+controller:
+  replicas: 1
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 2Gi}
+configs:
+  params:
+    server.insecure: false
+  cm:
+    admin.enabled: true
+  rbac:
+    policy.default: role:readonly

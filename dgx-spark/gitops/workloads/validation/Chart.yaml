@@ -1,0 +1,5 @@
+apiVersion: v2
+name: dgx-gpu-validation
+description: Two durable, deliberately named GPU checks, not inference benchmarks
+type: application
+version: 0.1.0

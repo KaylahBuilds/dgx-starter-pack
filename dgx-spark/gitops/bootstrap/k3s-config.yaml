@@ -1,0 +1,4 @@
+# Merge into /etc/rancher/k3s/config.yaml on the Spark AFTER host/runtime checks.
+# Keep existing settings. Never put the cluster token in this repository.
+default-runtime: nvidia
+write-kubeconfig-mode: "0600"

@@ -1,0 +1,124 @@
+git:
+  repoURL: https://github.com/KaylahBuilds/dgx-starter-pack.git
+  revision: main
+destinationServer: https://kubernetes.default.svc
+
+# Root sync registers children; a manual child is NOT automatically deployed.
+# Chart pins were checked on 2026-10-08; see docs/versions.md before upgrading.
+applications:
+  workload-defaults:
+    enabled: true
+    project: dgx-workloads
+    namespace: ai-lab
+    path: dgx-spark/gitops/workloads/defaults
+    autoSync: true
+  gpu-operator:
+    enabled: true
+    project: dgx-infrastructure
+    namespace: gpu-operator
+    repoURL: https://helm.ngc.nvidia.com/nvidia
+    chart: gpu-operator
+    revision: v26.7.1
+    autoSync: false
+    values:
+      driver: {enabled: false}
+      toolkit: {enabled: false}
+      cdi: {enabled: false}
+      dcgm: {enabled: false}
+      dcgmExporter: {enabled: false}
+      mig: {strategy: none}
+      migManager: {enabled: false}
+      operator: {runtimeClass: nvidia}
+      devicePlugin:
+        env:
+          - {name: DEVICE_LIST_STRATEGY, value: envvar}
+  gpu-validation:
+    enabled: false
+    project: dgx-workloads
+    namespace: ai-lab
+    path: dgx-spark/gitops/workloads/validation
+    autoSync: false
+    values:
+      # Inspect linux/arm64 and pin the digest of this official Spark image.
+      image: ""
+      runId: rc1
+  model-service:
+    enabled: false
+    project: dgx-workloads
+    namespace: ai-lab
+    path: dgx-spark/gitops/workloads/model
+    autoSync: true
+    values:
+      image: ""
+      # OpenAI-compatible vLLM entrypoint; verify the image on GB10 first.
+      command: [vllm, serve]
+      modelId: ""
+      modelRevision: ""
+      servedModelName: spark-model
+      memoryRequest: 8Gi
+      memoryLimit: 32Gi
+      cacheSize: 80Gi
+      extraArgs: []
+  model-gateway:
+    enabled: false
+    project: dgx-workloads
+    namespace: ai-lab
+    path: dgx-spark/gitops/workloads/gateway
+    autoSync: false
+    values:
+      image: ""
+      # Create this Secret outside Git. No database/virtual-key management here.
+      existingSecret: litellm-auth
+      servedModelName: spark-model
+  monitoring:
+    enabled: false
+    project: dgx-infrastructure
+    namespace: monitoring
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    revision: 92.1.1
+    autoSync: false
+    values:
+      grafana: {enabled: false}
+      alertmanager: {enabled: false}
+      kubeEtcd: {enabled: false}
+      kubeScheduler: {enabled: false}
+      kubeControllerManager: {enabled: false}
+      kubeProxy: {enabled: false}
+      # This avoids creating a scrape Service in kube-system; the Argo project
+      # is deliberately limited to the monitoring destination namespace.
+      coreDns: {enabled: false}
+      prometheus:
+        prometheusSpec:
+          retention: 24h
+          retentionSize: 4GB
+          # ServiceMonitor is deliberately unnecessary for this local endpoint.
+          additionalScrapeConfigs:
+            - job_name: spark-model
+              metrics_path: /metrics
+              static_configs:
+                - targets: [model-service.ai-lab.svc.cluster.local:8000]
+          resources:
+            requests: {cpu: 100m, memory: 512Mi}
+            limits: {memory: 2Gi}
+          storageSpec:
+            volumeClaimTemplate:
+              spec:
+                storageClassName: local-path
+                accessModes: [ReadWriteOnce]
+                resources:
+                  requests: {storage: 8Gi}
+  accelerated-networking:
+    enabled: false
+    project: dgx-infrastructure
+    namespace: network-operator
+    repoURL: https://helm.ngc.nvidia.com/nvidia
+    chart: network-operator
+    revision: 26.7.0
+    autoSync: false
+    # No NicClusterPolicy: choose hardware/OFED/RDMA settings deliberately.
+    values:
+      # GPU Operator already owns node feature discovery; do not run it twice.
+      nfd: {enabled: false}
+      sriovNetworkOperator: {enabled: false}
+      maintenanceOperator: {enabled: false}

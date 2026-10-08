@@ -1,0 +1,3 @@
+image: ""
+existingSecret: litellm-auth
+servedModelName: spark-model

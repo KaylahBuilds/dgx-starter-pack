@@ -4,8 +4,10 @@ Dedicated workspace for setting up, documenting, and validating the DGX Spark.
 
 ## Status
 
-Setup has not been implemented or tested. Record the actual machine details
-before adding installation steps or choosing driver and runtime versions.
+The [GitOps example](gitops/README.md) provides the k3s/Argo CD companion to the
+Spark blog, with offline-checked manifests and operator-run instructions.
+Hardware setup and actual GPU/model execution have not been performed or tested.
+Record actual machine details and validate the host baseline before installation.
 
 ## Setup checklist
 

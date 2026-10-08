@@ -1,0 +1,98 @@
+{{- $image := required "Set image to an inspected ARM64 CUDA devel image digest" .Values.image }}
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $image) }}
+{{- fail "Validation image must be pinned to a sha256 digest" }}
+{{- end }}
+{{- if or (gt (len .Values.runId) 24) (not (regexMatch "^[a-z0-9]+(-[a-z0-9]+)*$" .Values.runId)) }}
+{{- fail "runId must be a DNS label of at most 24 characters" }}
+{{- end }}
+{{- range $check := list "visibility" "compute" }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-{{ $check }}-{{ $.Values.runId }}
+  namespace: {{ $.Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ ternary "0" "1" (eq $check "visibility") | quote }}
+    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  # No TTL: deleting a Git-managed Job can cause a reconciler to recreate it.
+  template:
+    spec:
+      serviceAccountName: model-workload
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        kubernetes.io/os: linux
+      containers:
+        - name: {{ $check }}
+          image: {{ $image | quote }}
+          imagePullPolicy: IfNotPresent
+          {{- if eq $check "visibility" }}
+          command: [nvidia-smi]
+          {{- else }}
+          command: [/bin/sh, -ec]
+          args:
+            - nvcc -arch=native -O2 /checks/smoke.cu -o /tmp/cuda-smoke && /tmp/cuda-smoke
+          volumeMounts:
+            - {name: checks, mountPath: /checks, readOnly: true}
+          {{- end }}
+          env:
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi, nvidia.com/gpu: 1}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+      {{- if eq $check "compute" }}
+      volumes:
+        - name: checks
+          configMap: {name: cuda-smoke-{{ $.Values.runId }}}
+      {{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cuda-smoke-{{ .Values.runId }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-options: Prune=false
+data:
+  smoke.cu: |
+    #include <cuda_runtime.h>
+    #include <cstdio>
+    #include <cstdlib>
+    void check(cudaError_t status) {
+      if (status != cudaSuccess) {
+        std::fprintf(stderr, "CUDA failed: %s\n", cudaGetErrorString(status));
+        std::exit(1);
+      }
+    }
+    __global__ void transform(int *values) {
+      int i = threadIdx.x;
+      values[i] = values[i] * 2 + 1;
+    }
+    int main() {
+      int host[256];
+      for (int i = 0; i < 256; ++i) host[i] = i;
+      int *device = nullptr;
+      check(cudaMalloc((void **)&device, sizeof(host)));
+      check(cudaMemcpy(device, host, sizeof(host), cudaMemcpyHostToDevice));
+      transform<<<1, 256>>>(device);
+      check(cudaGetLastError());
+      check(cudaDeviceSynchronize());
+      check(cudaMemcpy(host, device, sizeof(host), cudaMemcpyDeviceToHost));
+      check(cudaFree(device));
+      for (int i = 0; i < 256; ++i) {
+        if (host[i] != i * 2 + 1) return 2;
+      }
+      std::puts("PASS: 256 CUDA arithmetic results verified (not model inference)");
+      return 0;
+    }

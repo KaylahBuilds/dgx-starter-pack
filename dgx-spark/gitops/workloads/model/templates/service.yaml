@@ -1,0 +1,105 @@
+{{- $image := required "Set image to a verified ARM64/GB10 vLLM image digest" .Values.image }}
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $image) }}
+{{- fail "Model image must be pinned to a sha256 digest" }}
+{{- end }}
+{{- $model := required "Set modelId to a tested, accessible model repository" .Values.modelId }}
+{{- if not (regexMatch "^[a-f0-9]{40}$" .Values.modelRevision) }}
+{{- fail "modelRevision must be an immutable 40-character commit" }}
+{{- end }}
+{{- range .Values.extraArgs }}
+{{- if regexMatch "^--(revision|code-revision|model|served-model-name|host|port|download-dir|trust-remote-code|api-key)(=|$)" . }}
+{{- fail "extraArgs cannot override the serving contract or contain credentials/remote code" }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-cache
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.cacheSize }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: model-service}
+  template:
+    metadata:
+      labels: {app: model-service}
+    spec:
+      serviceAccountName: model-workload
+      automountServiceAccountToken: false
+      runtimeClassName: nvidia
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        kubernetes.io/os: linux
+      containers:
+        - name: model
+          image: {{ $image | quote }}
+          imagePullPolicy: IfNotPresent
+          command: {{ .Values.command | toJson }}
+          args:
+            - {{ $model | quote }}
+            - --revision
+            - {{ .Values.modelRevision | quote }}
+            - --served-model-name
+            - {{ .Values.servedModelName | quote }}
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --download-dir
+            - /models
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - {name: HF_HOME, value: /models/huggingface}
+            - {name: NVIDIA_DRIVER_CAPABILITIES, value: "compute,utility"}
+          ports:
+            - {name: http, containerPort: 8000}
+          resources:
+            requests: {cpu: "2", memory: {{ .Values.memoryRequest }}}
+            limits: {cpu: "8", memory: {{ .Values.memoryLimit }}, nvidia.com/gpu: 1}
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 180
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+          # No liveness probe that restarts a long cold model download.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: model-cache, mountPath: /models}
+            - {name: shm, mountPath: /dev/shm}
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim: {claimName: model-cache}
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 2Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-service
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  selector: {app: model-service}
+  ports:
+    - {name: http, port: 8000, targetPort: http}

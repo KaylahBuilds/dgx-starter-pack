@@ -1,0 +1,54 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: dgx-bootstrap
+  namespace: argocd
+spec:
+  description: Admin-only parent; creating children in other projects is privileged
+  sourceRepos: [https://github.com/KaylahBuilds/dgx-starter-pack.git]
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: argocd}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: argoproj.io, kind: Application}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: dgx-infrastructure
+  namespace: argocd
+spec:
+  description: Admin-only GPU, monitoring and optional network operators
+  sourceRepos:
+    - https://helm.ngc.nvidia.com/nvidia
+    - https://prometheus-community.github.io/helm-charts
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: gpu-operator}
+    - {server: https://kubernetes.default.svc, namespace: monitoring}
+    - {server: https://kubernetes.default.svc, namespace: network-operator}
+  # Operators require cluster RBAC/CRDs. This is NOT a tenant sandbox.
+  clusterResourceWhitelist:
+    - {group: "*", kind: "*"}
+  namespaceResourceWhitelist:
+    - {group: "*", kind: "*"}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: dgx-workloads
+  namespace: argocd
+spec:
+  description: Lab workloads; no cluster-wide resources or Git-managed Secrets
+  sourceRepos: [https://github.com/KaylahBuilds/dgx-starter-pack.git]
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: ai-lab}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: "", kind: ServiceAccount}
+    - {group: "", kind: Service}
+    - {group: "", kind: ConfigMap}
+    - {group: "", kind: PersistentVolumeClaim}
+    - {group: "", kind: LimitRange}
+    - {group: apps, kind: Deployment}
+    - {group: batch, kind: Job}
+    - {group: networking.k8s.io, kind: NetworkPolicy}

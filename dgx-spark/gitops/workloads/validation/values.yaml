@@ -1,0 +1,4 @@
+# Candidate: nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04
+# Resolve and inspect its linux/arm64 digest; never substitute a guessed digest.
+image: ""
+runId: rc1

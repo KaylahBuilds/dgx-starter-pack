@@ -5,6 +5,15 @@
 .secrets/
 *.key
 *.pem
+*.p12
+*.pfx
+.kube/
+kubeconfig*
+*.kubeconfig
+*.secret.yaml
+*.secret.yml
+values.local.yaml
+values.local.yml
 
 # Model weights, datasets, and experiment output
 models/

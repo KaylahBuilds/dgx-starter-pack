@@ -1,0 +1,67 @@
+{{- $gateway := index .Values.applications "model-gateway" }}
+{{- $modelApp := index .Values.applications "model-service" }}
+{{- if $gateway.enabled }}
+{{- if not $modelApp.enabled }}
+{{- fail "Enable and validate model-service before model-gateway" }}
+{{- end }}
+{{- if ne $gateway.values.servedModelName $modelApp.values.servedModelName }}
+{{- fail "Gateway servedModelName must match model-service" }}
+{{- end }}
+{{- end }}
+{{- range $name, $app := .Values.applications }}
+{{- if $app.enabled }}
+{{- if and $app.chart (not $app.revision) }}
+{{- fail (printf "%s requires a pinned chart revision" $name) }}
+{{- end }}
+{{- if has $name (list "gpu-validation" "model-service" "model-gateway") }}
+{{- $image := required (printf "%s requires an inspected ARM64 image digest" $name) $app.values.image }}
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $image) }}
+{{- fail (printf "%s image must be pinned to a sha256 digest" $name) }}
+{{- end }}
+{{- end }}
+{{- if eq $name "model-service" }}
+{{- $_ := required "model-service requires modelId" $app.values.modelId }}
+{{- if not (regexMatch "^[a-f0-9]{40}$" $app.values.modelRevision) }}
+{{- fail "model-service requires an immutable 40-character model revision" }}
+{{- end }}
+{{- end }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dgx-{{ $name }}
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: dgx-spark-platform
+spec:
+  project: {{ $app.project }}
+  destination:
+    server: {{ $.Values.destinationServer | quote }}
+    namespace: {{ $app.namespace }}
+  source:
+    repoURL: {{ default $.Values.git.repoURL $app.repoURL | quote }}
+    targetRevision: {{ default $.Values.git.revision $app.revision | quote }}
+    {{- if $app.chart }}
+    chart: {{ $app.chart }}
+    {{- else }}
+    path: {{ $app.path }}
+    {{- end }}
+    {{- if $app.values }}
+    helm:
+      valuesObject:
+        {{- toYaml $app.values | nindent 8 }}
+    {{- end }}
+  syncPolicy:
+    {{- if $app.autoSync }}
+    automated:
+      enabled: true
+      selfHeal: true
+      prune: false
+    {{- end }}
+    syncOptions:
+      - PruneLast=true
+      {{- if eq $name "monitoring" }}
+      - ServerSideApply=true
+      {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,9 @@
+image: ""
+command: [vllm, serve]
+modelId: ""
+modelRevision: ""
+servedModelName: spark-model
+memoryRequest: 8Gi
+memoryLimit: 32Gi
+cacheSize: 80Gi
+extraArgs: []

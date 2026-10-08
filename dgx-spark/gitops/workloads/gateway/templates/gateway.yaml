@@ -1,0 +1,79 @@
+{{- $image := required "Set image to an inspected ARM64 LiteLLM image digest" .Values.image }}
+{{- if not (regexMatch "^.+@sha256:[a-f0-9]{64}$" $image) }}
+{{- fail "Gateway image must be pinned to a sha256 digest" }}
+{{- end }}
+{{- $secret := required "Create an authentication Secret outside Git" .Values.existingSecret }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-gateway-config
+  namespace: {{ .Release.Namespace }}
+data:
+  config.yaml: |
+    model_list:
+      - model_name: {{ .Values.servedModelName | quote }}
+        litellm_params:
+          model: {{ printf "openai/%s" .Values.servedModelName | quote }}
+          api_base: http://model-service.ai-lab.svc.cluster.local:8000/v1
+          api_key: unused-local-backend
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-gateway
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: model-gateway}
+  template:
+    metadata:
+      labels: {app: model-gateway}
+    spec:
+      serviceAccountName: model-workload
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: arm64
+        kubernetes.io/os: linux
+      containers:
+        - name: gateway
+          image: {{ $image | quote }}
+          command: [litellm]
+          args: [--config, /config/config.yaml, --host, 0.0.0.0, --port, "4000"]
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ $secret }}, key: LITELLM_MASTER_KEY}
+          ports:
+            - {name: http, containerPort: 4000}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          startupProbe:
+            httpGet: {path: /health/liveliness, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health/readiness, port: http}
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: model-gateway-config}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-gateway
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  selector: {app: model-gateway}
+  ports:
+    - {name: http, port: 4000, targetPort: http}
